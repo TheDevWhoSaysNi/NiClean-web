@@ -11,6 +11,19 @@ const includeLogCheckbox = document.getElementById('includeLog');
 
 let batchLogs = [];
 
+// Global callback for Turnstile success
+window.onTurnstileSuccess = function(token) {
+    const startBtn = document.getElementById('startBtn');
+    startBtn.disabled = false;
+    startBtn.style.opacity = "1";
+    startBtn.style.cursor = "pointer";
+    // Using your existing helper to log the event
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = document.createElement('div');
+    entry.innerHTML = `[${timestamp}] Human verified. Ready to NiClean!`;
+    document.getElementById('log').appendChild(entry);
+};
+
 // Helper to update the UI and internal log
 const niLog = (msg) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -44,30 +57,29 @@ startBtn.addEventListener('click', async () => {
     // 1. Cloudflare Turnstile Check
     const turnstileResponse = turnstile.getResponse();
     if (!turnstileResponse) {
-        niLog("Error: Please complete the human verification.");
+        niLog("Ni! Error: Please complete the human verification. Or you you must find a shrubbery!");
         return;
     }
 
     const files = fileInput.files;
     if (files.length === 0) {
-        niLog("Error: No files selected.");
+        niLog("Ni! Error: No files selected.");
         return;
     }
 
     startBtn.disabled = true;
     batchLogs = []; // Reset logs for new batch
     
-    niLog("Loading FFmpeg.wasm from local public folder...");
+    niLog("Ni! Loading FFmpeg.wasm from local public folder...");
 
     try {
-        // Loading from local public/ffmpeg/ folder as planned
+        // Load FFMPEG wasm and core from local public folder
         await ffmpeg.load({
             coreURL: './public/ffmpeg/ffmpeg-core.js',
-            wasmURL: './public/ffmpeg/ffmpeg-core.wasm',
-            workerURL: './public/ffmpeg/ffmpeg-core.worker.js'
+            wasmURL: './public/ffmpeg/ffmpeg-core.wasm'
         });
     } catch (err) {
-        niLog("Critical Error: Could not load FFmpeg. Check your COOP/COEP headers.");
+        niLog("Ni! Critical Error: FFmpeg failed to load. Check your Cloudflare _headers.");
         console.error(err);
         startBtn.disabled = false;
         return;
@@ -84,12 +96,20 @@ startBtn.addEventListener('click', async () => {
 
         niLog(`Processing (${ni + 1}/${files.length}): ${file.name}`);
 
-        // Determine Extension and New Filename
+        // Determine internal processing extension (always lowercase for FFmpeg)
         let targetExt = isVideo ? (platform === 'ios' ? 'mov' : 'mp4') : 'jpg';
         let newName = file.name;
 
-        if (platform === 'android') newName = getAndroidName(targetExt);
-        else if (platform === 'ios') newName = getIosName(ni, targetExt);
+        // Decide how the downloaded filename should look
+        if (platform === 'android') {
+            // Android: lowercase extensions (.jpg / .mp4)
+            const nameExt = targetExt.toLowerCase();
+            newName = getAndroidName(nameExt);
+        } else if (platform === 'ios') {
+            // iPhone: uppercase extensions (.JPG / .MOV)
+            const nameExt = targetExt.toUpperCase();
+            newName = getIosName(ni, nameExt);
+        } // "original" keeps the exact original filename (including its extension and casing)
 
         // Load file into virtual FS
         await ffmpeg.writeFile('input', await fetchFile(file));
@@ -102,12 +122,15 @@ startBtn.addEventListener('click', async () => {
             await ffmpeg.exec(['-i', 'input', '-map_metadata', '-1', '-c:v', 'copy', '-c:a', 'copy', 'output.' + targetExt]);
         } else if (isImage) {
             niLog("Converting/Cleaning image...");
-            await ffmpeg.exec(['-i', 'input', '-map_metadata', '-1', 'output.jpg']);
+            await ffmpeg.exec(['-i', 'input', '-map_metadata', '-1', 'output.' + targetExt]);
         }
 
         // Export result to user
         const data = await ffmpeg.readFile('output.' + targetExt);
-        const url = URL.createObjectURL(new Blob([data.buffer], { type: isVideo ? 'video/mp4' : 'image/jpeg' }));
+        const mimeType = isVideo
+            ? (targetExt.toLowerCase() === 'mov' ? 'video/quicktime' : 'video/mp4')
+            : 'image/jpeg';
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: mimeType }));
         
         const a = document.createElement('a');
         a.href = url;
@@ -130,9 +153,14 @@ startBtn.addEventListener('click', async () => {
         logLink.click();
     }
 
-    niLog("All files processed. Ni!");
+    niLog("All files processed. Done, I mean, Ni!");
     startBtn.disabled = false;
     
-    // Reset Turnstile for next batch
+    // Reset button to locked/faint state
+    startBtn.disabled = true;
+    startBtn.style.opacity = "0.3";
+    startBtn.style.cursor = "not-allowed";
+
+    // Reset Turnstile widget so it requires a new check for a new batch
     turnstile.reset();
 });

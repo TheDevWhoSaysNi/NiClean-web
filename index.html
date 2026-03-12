@@ -15,18 +15,18 @@
                     <div class="logo"></div>
                     <h1>NiClean Web</h1>
                 </div>
-                <p>A privacy-first tool by <strong>The Dev Who Says Ni</strong>. All processing happens in your browser. No files are ever uploaded to any server.</p>
-                
+                <p>A privacy-first tool by <strong>TheDevWhoSaysNi</strong>. All processing happens in your browser. No files are ever uploaded to any server.</p>
+                <p>To process your media locally and privately, this tool downloads a one-time engine (FFmpeg) directly to your browser’s temporary memory. For the best experience and to save data, we recommend allowing browser caching so you don't have to download this engine again for future 'NiCleaning' sessions. You can verify our security by reviewing our source code on GitHub, which confirms we use FFmpeg, the trusted, open-source industry standard for media conversion and metadata stripping. Your files never leave your computer.</p>
                 <hr style="border:0; border-top:1px solid var(--line); margin:20px 0;">
 
                 <div class="profile-form">
                     <div class="form-group">
-                        <label>1. Select Files</label>
+                        <label>Step 1:</label>
                         <input type="file" id="fileInput" multiple style="margin-top: 8px;">
                     </div>
 
                     <div class="form-group">
-                        <label>2. Target Platform (Naming & Format)</label>
+                        <label>Step 2: Naming & Format</label>
                         <select id="platformSelect" style="margin-top: 8px;">
                             <option value="ios">iPhone (IMG_0001.JPG / .MOV)</option>
                             <option value="android">Android (YYYYMMDD_HHMMSSSSS.jpg / .mp4)</option>
@@ -35,12 +35,18 @@
                     </div>
 
                     <div class="form-group">
-                        <label>3. Human Verification</label>
-                        <div class="cf-turnstile" data-sitekey="0x4AAAAAACpxsLfbLI7odFih" data-theme="dark" style="margin-top: 8px;"></div>
+                        <label>Step 3: Verify and Start</label>
+                        <div class="cf-turnstile" 
+                             data-sitekey="0x4AAAAAACpxsLfbLI7odFih" 
+                             data-theme="dark" 
+                             data-callback="onTurnstileSuccess" 
+                             style="margin-top: 8px;"></div>
                     </div>
-
+                    
                     <div style="margin-top:20px;">
-                        <button class="btn" id="startBtn">Start Cleaning</button>
+                        <button class="btn" id="startBtn" disabled style="opacity: 0.3; cursor: not-allowed; width: 100%;">
+                            Start NiCleaning
+                        </button>
                     </div>
                 </div>
             </div>

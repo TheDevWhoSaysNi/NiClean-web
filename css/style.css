@@ -47,4 +47,4 @@ body {
 @media (prefers-color-scheme: dark) { .codeblock { background: rgba(255,255,255,0.05); } }
 
 input[type="file"] { margin-bottom: 20px; }
-select { padding: 8px; border-radius: 6px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); }
+select { padding: 8px; border-radius: 6px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); margin-bottom: 20px; }
