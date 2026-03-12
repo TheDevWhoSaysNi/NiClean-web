@@ -17,7 +17,7 @@ The site is hosted on **GitHub** and deployed via **Cloudflare Pages**. It uses 
 If you want to run your own version of NiClean:
 
 1.  **Fork the repo** to your own GitHub account.
-2.  **Download the binaries:** Ensure the `public/ffmpeg/` folder contains `ffmpeg-core.js` and `ffmpeg-core.wasm` (v0.12.6).
+2.  **FFmpeg.wasm** is loaded from CDN (esm.sh + unpkg); no local binaries needed. The app uses `@ffmpeg/ffmpeg` and `@ffmpeg/util` v0.12.2.
 3.  **Setup Cloudflare Pages:**
     * Connect your fork to Cloudflare Pages.
     * Set the **Build Command** and **Output Directory** to be empty.

@@ -3,7 +3,7 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 // Configuration: update versions later for easy upgrades
-const FFMPEG_VERSION = '0.12.6';
+const FFMPEG_VERSION = '0.12.2';
 const CDN_BASE = `https://unpkg.com/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd`;
 
 const ffmpeg = new FFmpeg();
