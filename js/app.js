@@ -1,4 +1,4 @@
-// The Dev Who Says Ni - NiClean Web Logic
+// NiClean Web Logic
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
@@ -7,16 +7,23 @@ const logEl = document.getElementById('log');
 const startBtn = document.getElementById('startBtn');
 const fileInput = document.getElementById('fileInput');
 const platformSelect = document.getElementById('platformSelect');
+const includeLogCheckbox = document.getElementById('includeLog');
 
-// Helper to update the "Ni" Log
+let batchLogs = [];
+
+// Helper to update the UI and internal log
 const niLog = (msg) => {
-    const entry = document.createElement('div');
-    entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    logEl.appendChild(entry);
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = `[${timestamp}] ${msg}`;
+    batchLogs.push(entry);
+    
+    const div = document.createElement('div');
+    div.innerHTML = entry;
+    logEl.appendChild(div);
     logEl.scrollTop = logEl.scrollHeight;
 };
 
-// Android naming: YYYYMMDD_HHMMSSSSS
+// Generic Android naming: YYYYMMDD_HHMMSSSSS
 const getAndroidName = (ext) => {
     const now = new Date();
     const datePart = now.toISOString().split('T')[0].replace(/-/g, '');
@@ -34,22 +41,41 @@ const getIosName = (index, ext) => {
 };
 
 startBtn.addEventListener('click', async () => {
+    // 1. Cloudflare Turnstile Check
+    const turnstileResponse = turnstile.getResponse();
+    if (!turnstileResponse) {
+        niLog("Error: Please complete the human verification.");
+        return;
+    }
+
     const files = fileInput.files;
-    if (files.length === 0) return niLog("Error: No files selected.");
+    if (files.length === 0) {
+        niLog("Error: No files selected.");
+        return;
+    }
 
     startBtn.disabled = true;
-    niLog("Loading FFmpeg.wasm...");
+    batchLogs = []; // Reset logs for new batch
+    
+    niLog("Loading FFmpeg.wasm from local public folder...");
 
-    // Load FFmpeg from CDN (Ensure COOP/COEP headers are set on Suncoast Servers)
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-    await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
+    try {
+        // Loading from local public/ffmpeg/ folder as planned
+        await ffmpeg.load({
+            coreURL: './public/ffmpeg/ffmpeg-core.js',
+            wasmURL: './public/ffmpeg/ffmpeg-core.wasm',
+            workerURL: './public/ffmpeg/ffmpeg-core.worker.js'
+        });
+    } catch (err) {
+        niLog("Critical Error: Could not load FFmpeg. Check your COOP/COEP headers.");
+        console.error(err);
+        startBtn.disabled = false;
+        return;
+    }
 
     niLog(`Starting batch: ${files.length} files detected.`);
 
-    // THE NI LOOP
+    // Loop to handle individual files one at a time to minimize resource usage on smaller computers
     for (let ni = 0; ni < files.length; ni++) {
         const file = files[ni];
         const platform = platformSelect.value;
@@ -68,11 +94,11 @@ startBtn.addEventListener('click', async () => {
         // Load file into virtual FS
         await ffmpeg.writeFile('input', await fetchFile(file));
 
-        // STRIP & CONVERT
-        // -map_metadata -1 nukes all metadata
-        // -c:v copy / -c:a copy skips re-encoding for speed if formats match
+        // CLEAN & CONVERT
+        // -map_metadata -1 removes all metadata
         if (isVideo) {
             niLog("Cleaning video metadata...");
+            // -c copy is used to ensure zero quality loss and maximum speed
             await ffmpeg.exec(['-i', 'input', '-map_metadata', '-1', '-c:v', 'copy', '-c:a', 'copy', 'output.' + targetExt]);
         } else if (isImage) {
             niLog("Converting/Cleaning image...");
@@ -89,8 +115,24 @@ startBtn.addEventListener('click', async () => {
         a.click();
         
         niLog(`Successfully cleaned: ${newName}`);
+        
+        // Clean up virtual FS memory for next file
+        await ffmpeg.deleteFile('input');
+    }
+
+    // Optional: Download log file
+    if (includeLogCheckbox.checked) {
+        const logBlob = new Blob([batchLogs.join('\n')], { type: 'text/plain' });
+        const logUrl = URL.createObjectURL(logBlob);
+        const logLink = document.createElement('a');
+        logLink.href = logUrl;
+        logLink.download = 'niclean_batch_log.txt';
+        logLink.click();
     }
 
     niLog("All files processed. Ni!");
     startBtn.disabled = false;
+    
+    // Reset Turnstile for next batch
+    turnstile.reset();
 });
