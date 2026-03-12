@@ -2,6 +2,10 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
+// Configuration: update versions later for easy upgrades
+const FFMPEG_VERSION = '0.12.6';
+const CDN_BASE = `https://unpkg.com/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd`;
+
 const ffmpeg = new FFmpeg();
 const logEl = document.getElementById('log');
 const startBtn = document.getElementById('startBtn');
@@ -17,6 +21,7 @@ window.onTurnstileSuccess = function(token) {
     startBtn.disabled = false;
     startBtn.style.opacity = "1";
     startBtn.style.cursor = "pointer";
+    niLog("Ni! Human verified. Engine ready.");
     // Using your existing helper to log the event
     const timestamp = new Date().toLocaleTimeString();
     const entry = document.createElement('div');
@@ -70,14 +75,15 @@ startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
     batchLogs = []; // Reset logs for new batch
     
-    niLog("Ni! Loading FFmpeg.wasm from local public folder...");
+    niLog(`Ni! Loading FFmpeg v${FFMPEG_VERSION} from global CDN...`);
 
     try {
         // Load FFMPEG wasm and core from local public folder
         await ffmpeg.load({
-            coreURL: './public/ffmpeg/ffmpeg-core.js',
-            wasmURL: './public/ffmpeg/ffmpeg-core.wasm'
+            coreURL: await toBlobURL(`${CDN_BASE}/ffmpeg-core.js`, 'text/javascript'),
+            wasmURL: await toBlobURL(`${CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm')
         });
+        niLog(`Ni! Engine loaded. Using FFmpeg ${FFMPEG_VERSION}. Starting batch...`);
     } catch (err) {
         niLog("Ni! Critical Error: FFmpeg failed to load. Check your Cloudflare _headers.");
         console.error(err);
