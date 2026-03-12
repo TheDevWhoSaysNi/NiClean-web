@@ -10,6 +10,20 @@
 <body>
     <div class="container">
         <div class="wrap">
+            <!-- Gate: show until Turnstile verifies (callback in inline script below) -->
+            <div id="turnstile-gate" class="card gate-card">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <div class="logo"></div>
+                    <h1>NiClean Web</h1>
+                </div>
+                <p style="margin-bottom: 20px;">Verify you are human to continue. Ni!</p>
+                <div class="cf-turnstile" 
+                     data-sitekey="0x4AAAAAACpxsLfbLI7odFih" 
+                     data-theme="dark" 
+                     data-callback="onTurnstileSuccess"></div>
+            </div>
+
+            <div id="app-content" style="display: none;">
             <div class="card">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <div class="logo"></div>
@@ -34,15 +48,6 @@
                         </select>
                     </div>
 
-                    <div class="form-group">
-                        <label>Step 3: Verify and Start</label>
-                        <div class="cf-turnstile" 
-                             data-sitekey="0x4AAAAAACpxsLfbLI7odFih" 
-                             data-theme="dark" 
-                             data-callback="onTurnstileSuccess" 
-                             style="margin-top: 8px;"></div>
-                    </div>
-                    
                     <div style="margin-top:20px; text-align:center;">
                         <button class="btn" id="startBtn" disabled style="opacity: 0.3; cursor: not-allowed;">
                             Start NiCleaning
@@ -72,7 +77,14 @@
             </div>
           
             <p class="muted" style="text-align:center; font-size:12px; margin-top: 20px;">© Suncoast Servers • TheDevWhoSaysNi</p>
+            </div>
         </div>
     </div>
+    <script>
+        window.onTurnstileSuccess = function() {
+            document.getElementById('turnstile-gate').style.display = 'none';
+            document.getElementById('app-content').style.display = 'block';
+        };
+    </script>
 </body>
 </html>

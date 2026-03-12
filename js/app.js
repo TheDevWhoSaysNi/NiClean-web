@@ -27,32 +27,14 @@ const niLog = (msg) => {
     logEl.scrollTop = logEl.scrollHeight;
 };
 
-// Helper to enable/disable the Start button based on state
+// Enable Start button when at least one file is selected
 const updateStartButtonState = () => {
-    try {
-        const hasFiles = fileInput.files && fileInput.files.length > 0;
-        const hasTurnstileToken = typeof turnstile !== 'undefined' && !!turnstile.getResponse();
-        const canStart = hasFiles && hasTurnstileToken;
-
-        startBtn.disabled = !canStart;
-        startBtn.style.opacity = canStart ? "1" : "0.3";
-        startBtn.style.cursor = canStart ? "pointer" : "not-allowed";
-    } catch (e) {
-        // If turnstile isn't ready yet, fall back to file-only check
-        const hasFiles = fileInput.files && fileInput.files.length > 0;
-        startBtn.disabled = !hasFiles;
-        startBtn.style.opacity = hasFiles ? "1" : "0.3";
-        startBtn.style.cursor = hasFiles ? "pointer" : "not-allowed";
-    }
+    const hasFiles = fileInput.files && fileInput.files.length > 0;
+    startBtn.disabled = !hasFiles;
+    startBtn.style.opacity = hasFiles ? "1" : "0.3";
+    startBtn.style.cursor = hasFiles ? "pointer" : "not-allowed";
 };
 
-// Global callback for Turnstile success
-window.onTurnstileSuccess = function(token) {
-    niLog("Ni! Human verified. Engine ready.");
-    updateStartButtonState();
-};
-
-// When files are selected/changed, re-evaluate button state
 fileInput.addEventListener('change', updateStartButtonState);
 
 // Generic Android naming: YYYYMMDD_HHMMSSSSS
@@ -73,13 +55,6 @@ const getIosName = (index, ext) => {
 };
 
 startBtn.addEventListener('click', async () => {
-    // 1. Cloudflare Turnstile Check
-    const turnstileResponse = turnstile.getResponse();
-    if (!turnstileResponse) {
-        niLog("Ni! Error: Please complete the human verification. Or you you must find a shrubbery!");
-        return;
-    }
-
     const files = fileInput.files;
     if (files.length === 0) {
         niLog("Ni! Error: No files selected.");
@@ -89,17 +64,16 @@ startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
     batchLogs = []; // Reset logs for new batch
     
-    niLog(`Ni! Loading FFmpeg v${FFMPEG_VERSION} from global CDN...`);
+    niLog(`Loading FFmpeg v${FFMPEG_VERSION} from CDN...`);
 
     try {
-        // Load FFMPEG wasm and core from local public folder
         await ffmpeg.load({
             coreURL: await toBlobURL(`${CDN_BASE}/ffmpeg-core.js`, 'text/javascript'),
             wasmURL: await toBlobURL(`${CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm')
         });
-        niLog(`Ni! Engine loaded. Using FFmpeg ${FFMPEG_VERSION}. Starting batch...`);
+        niLog(`Engine loaded. Starting batch...`);
     } catch (err) {
-        niLog("Ni! Critical Error: FFmpeg failed to load. Check your Cloudflare _headers.");
+        niLog("Critical Error: FFmpeg failed to load.");
         console.error(err);
         startBtn.disabled = false;
         return;
@@ -173,14 +147,6 @@ startBtn.addEventListener('click', async () => {
         logLink.click();
     }
 
-    niLog("All files processed. Done, I mean, Ni!");
-    startBtn.disabled = false;
-    
-    // Reset button to locked/faint state
-    startBtn.disabled = true;
-    startBtn.style.opacity = "0.3";
-    startBtn.style.cursor = "not-allowed";
-
-    // Reset Turnstile widget so it requires a new check for a new batch
-    turnstile.reset();
+    niLog("All files processed. Done!");
+    updateStartButtonState();
 });
