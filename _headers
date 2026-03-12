@@ -1,3 +1,7 @@
 /*
+  COOP/COEP headers removed so the FFmpeg.wasm worker (loaded from esm.sh CDN)
+  can run. The single-threaded core does not require SharedArrayBuffer.
+  (Uncomment below only if you self-host FFmpeg and need multi-threaded core.)
   Cross-Origin-Embedder-Policy: require-corp
   Cross-Origin-Opener-Policy: same-origin
+*/
