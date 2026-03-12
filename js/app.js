@@ -15,20 +15,6 @@ const includeLogCheckbox = document.getElementById('includeLog');
 
 let batchLogs = [];
 
-// Global callback for Turnstile success
-window.onTurnstileSuccess = function(token) {
-    const startBtn = document.getElementById('startBtn');
-    startBtn.disabled = false;
-    startBtn.style.opacity = "1";
-    startBtn.style.cursor = "pointer";
-    niLog("Ni! Human verified. Engine ready.");
-    // Using your existing helper to log the event
-    const timestamp = new Date().toLocaleTimeString();
-    const entry = document.createElement('div');
-    entry.innerHTML = `[${timestamp}] Human verified. Ready to NiClean!`;
-    document.getElementById('log').appendChild(entry);
-};
-
 // Helper to update the UI and internal log
 const niLog = (msg) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -40,6 +26,34 @@ const niLog = (msg) => {
     logEl.appendChild(div);
     logEl.scrollTop = logEl.scrollHeight;
 };
+
+// Helper to enable/disable the Start button based on state
+const updateStartButtonState = () => {
+    try {
+        const hasFiles = fileInput.files && fileInput.files.length > 0;
+        const hasTurnstileToken = typeof turnstile !== 'undefined' && !!turnstile.getResponse();
+        const canStart = hasFiles && hasTurnstileToken;
+
+        startBtn.disabled = !canStart;
+        startBtn.style.opacity = canStart ? "1" : "0.3";
+        startBtn.style.cursor = canStart ? "pointer" : "not-allowed";
+    } catch (e) {
+        // If turnstile isn't ready yet, fall back to file-only check
+        const hasFiles = fileInput.files && fileInput.files.length > 0;
+        startBtn.disabled = !hasFiles;
+        startBtn.style.opacity = hasFiles ? "1" : "0.3";
+        startBtn.style.cursor = hasFiles ? "pointer" : "not-allowed";
+    }
+};
+
+// Global callback for Turnstile success
+window.onTurnstileSuccess = function(token) {
+    niLog("Ni! Human verified. Engine ready.");
+    updateStartButtonState();
+};
+
+// When files are selected/changed, re-evaluate button state
+fileInput.addEventListener('change', updateStartButtonState);
 
 // Generic Android naming: YYYYMMDD_HHMMSSSSS
 const getAndroidName = (ext) => {
