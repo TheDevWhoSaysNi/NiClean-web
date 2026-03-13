@@ -7,24 +7,42 @@ import ExifReader from 'exifreader';
 async function scanMetadata(input) {
     try {
         let tags;
+        const options = {
+            expanded: true,      // keep Exif / IPTC / XMP / etc. separate
+            includeUnknown: true // surface non-standard / JUMBF / C2PA-style blocks when possible
+        };
         if (input instanceof ArrayBuffer || ArrayBuffer.isView(input)) {
             // Synchronous API for ArrayBuffer/TypedArray
-            tags = ExifReader.load(input, { expanded: true });
+            tags = ExifReader.load(input, options);
         } else {
             // Asynchronous API for File/Blob/URL
-            tags = await ExifReader.load(input, { expanded: true });
+            tags = await ExifReader.load(input, options);
         }
         if (!tags || Object.keys(tags).length === 0) return null;
 
         // Drop thumbnail to avoid bloating logs
         delete tags.Thumbnail;
 
-        const keys = Object.keys(tags).sort((a, b) => a.localeCompare(b));
-        const linesArr = keys.map((name) => {
-            const tag = tags[name];
-            const desc = tag && 'description' in tag ? String(tag.description) : JSON.stringify(tag && tag.value);
-            return `${name}: ${desc}`;
-        });
+        // Flatten expanded groups (exif/xmp/iptc/...) into a single, consistently ordered list
+        const flat = [];
+        for (const groupName of Object.keys(tags)) {
+            if (!tags[groupName] || typeof tags[groupName] !== 'object') continue;
+            if (groupName === 'file') continue; // usually file system info, very noisy
+            const group = tags[groupName];
+            for (const tagName of Object.keys(group)) {
+                const entry = group[tagName];
+                const desc = entry && 'description' in entry
+                    ? String(entry.description)
+                    : JSON.stringify(entry && entry.value);
+                // Use "Group.Tag" as the key so ordering is stable before/after
+                flat.push({ key: `${groupName}.${tagName}`, line: `${tagName}: ${desc}` });
+            }
+        }
+
+        if (!flat.length) return null;
+
+        flat.sort((a, b) => a.key.localeCompare(b.key));
+        const linesArr = flat.map(x => x.line);
         const text = linesArr.join('\n');
         const kb = (new TextEncoder().encode(text).length / 1024).toFixed(2);
         return { text, lines: linesArr.length, kb };
