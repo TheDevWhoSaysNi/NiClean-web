@@ -9,7 +9,8 @@
     {
       "imports": {
         "@ffmpeg/util": "https://esm.sh/@ffmpeg/util@0.12.2",
-        "@uswriting/exiftool": "https://esm.sh/@uswriting/exiftool@1.0.9"
+        "@saschazar/wasm-exif": "https://esm.sh/@saschazar/wasm-exif@3.0.0",
+        "codem-isoboxer": "https://esm.sh/codem-isoboxer@0.3.10"
       }
     }
     </script>
@@ -70,7 +71,7 @@
                 <h3>Processing Log</h3>
                 <div id="log" class="codeblock">
                     [System] Waiting for input...<br>
-                    [System] Note: FFmpeg.wasm for cleaning; ExifTool.wasm for metadata scans
+                    [System] Note: FFmpeg.wasm for cleaning; EXIF (images) + container metadata (video) for before/after scans
                 </div>
                 <div style="margin-top:10px;">
                     <label class="checkbox-label">

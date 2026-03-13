@@ -1,7 +1,100 @@
 // NiClean Web Logic
 // FFmpeg comes from UMD script (js/ffmpeg/ffmpeg.js) so the worker is same-origin
 import { fetchFile } from '@ffmpeg/util';
-import { parseMetadata } from '@uswriting/exiftool';
+import wasm_exif from '@saschazar/wasm-exif';
+import ISOBoxer from 'codem-isoboxer';
+
+// Lazy-init EXIF module (images only); ExifTool.wasm had WASM load issues from CDN
+let exifModulePromise = null;
+function getExifModule() {
+    if (!exifModulePromise) exifModulePromise = wasm_exif();
+    return exifModulePromise;
+}
+// Video container metadata tag names (MP4/MOV ilst); surfaces encoder, comment, AI tool names, etc.
+const VIDEO_META_TAG_NAMES = {
+    '\u00a9too': 'Encoder / Tool',
+    '\u00a9cmt': 'Comment',
+    '\u00a9nam': 'Title',
+    '\u00a9aut': 'Author',
+    '\u00a9cpy': 'Copyright',
+    '\u00a9day': 'Date',
+    '\u00a9des': 'Description',
+    '\u00a9gen': 'Genre',
+    '\u00a9wrt': 'Writer',
+    '\u00a9swr': 'Software',
+    '\u00a9xyz': 'Location',
+    '----': 'Custom'
+};
+
+/** Extract container metadata from MP4/MOV buffer (moov/udta/meta/ilst); returns { text, lines, kb } or null */
+function scanVideoMetadata(buffer) {
+    if (!buffer || !(buffer.byteLength || buffer.length)) return null;
+    try {
+        const ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
+        const root = ISOBoxer.parseBuffer(ab);
+        const moov = root && root.fetch && root.fetch('moov');
+        const udta = moov && moov.fetch && moov.fetch('udta');
+        const meta = udta && udta.fetch && udta.fetch('meta');
+        const ilst = meta && meta.fetch && meta.fetch('ilst');
+        const lines = [];
+        if (moov && moov.fetch('mvhd')) {
+            const mvhd = moov.fetch('mvhd');
+            if (mvhd.timescale && mvhd.duration) {
+                const sec = (mvhd.duration / mvhd.timescale).toFixed(2);
+                lines.push(`Duration: ${sec} s (timescale ${mvhd.timescale})`);
+            }
+        }
+        if (ilst && ilst.boxes && ilst.boxes.length) {
+            for (const tagBox of ilst.boxes) {
+                const tagType = (tagBox.type || '').trim();
+                const name = VIDEO_META_TAG_NAMES[tagType] || `Tag ${JSON.stringify(tagType)}`;
+                const dataBox = tagBox.fetch && tagBox.fetch('data');
+                let value = '(no data)';
+                if (dataBox) {
+                    const raw = dataBox._raw || dataBox.data;
+                    if (raw && (raw.byteLength || raw.length) > 16) {
+                        const buf = raw.buffer ? new Uint8Array(raw.buffer, raw.byteOffset || 0, raw.byteLength || raw.length) : new Uint8Array(raw);
+                        const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+                        const type = view.getUint32(8, false);
+                        if (type === 1) {
+                            try {
+                                value = new TextDecoder('utf-8').decode(buf.subarray(16)).replace(/\0+$/, '').trim();
+                            } catch (_) {
+                                value = '(decode error)';
+                            }
+                        } else {
+                            value = `(binary, type ${type})`;
+                        }
+                    }
+                }
+                lines.push(`${name}: ${String(value).trim() || '(empty)'}`);
+            }
+        }
+        if (lines.length === 0) return null;
+        const text = lines.join('\n');
+        const kb = (text.length / 1024).toFixed(2);
+        return { text, lines: lines.length, kb };
+    } catch (_) {
+        return null;
+    }
+}
+
+/** Run EXIF scan on image buffer; returns { text, lines, kb } or null on skip/fail */
+async function scanExif(buffer) {
+    if (!buffer || !buffer.length) return null;
+    try {
+        const mod = await getExifModule();
+        const result = await Promise.resolve(mod.exif(buffer, buffer.length));
+        if (result == null) return null;
+        const obj = typeof result === 'object' ? result : { value: result };
+        const text = JSON.stringify(obj, null, 2);
+        const lines = text.split(/\n/).length;
+        const kb = (text.length / 1024).toFixed(2);
+        return { text, lines, kb };
+    } catch (_) {
+        return null;
+    }
+}
 
 // FFmpeg from UMD (js/ffmpeg/ffmpeg.js) so worker 814.ffmpeg.js is same-origin
 const FFmpegClass = (window.FFmpegWASM && window.FFmpegWASM.FFmpeg);
@@ -101,21 +194,34 @@ startBtn.addEventListener('click', async () => {
 
         niLog(`Processing (${ni + 1}/${files.length}): ${file.name}`);
 
-        // ExifTool: scan original file for metadata (before cleaning)
+        // EXIF scan (images only; wasm-exif is JPEG/TIFF); before cleaning
         let beforeMeta = '';
-        try {
-            const beforeResult = await parseMetadata(file);
-            if (beforeResult.success && typeof beforeResult.data === 'string') {
-                const text = beforeResult.data.trim();
-                const lines = text ? text.split(/\r?\n/).length : 0;
-                const kb = (beforeResult.data.length / 1024).toFixed(2);
-                niLog(`Running ExifTool… found ${kb} KB (${lines} lines) of metadata.`);
-                beforeMeta = text;
-            } else {
-                niLog(`Running ExifTool… no metadata or unsupported format.`);
+        if (isImage) {
+            try {
+                const buf = new Uint8Array(await file.arrayBuffer());
+                const scan = await scanExif(buf);
+                if (scan) {
+                    niLog(`Running ExifTool… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
+                    beforeMeta = scan.text;
+                } else {
+                    niLog(`Running ExifTool… no metadata or unsupported format.`);
+                }
+            } catch (e) {
+                niLog(`Running ExifTool… skipped (${e.message || 'error'}).`);
             }
-        } catch (e) {
-            niLog(`Running ExifTool… skipped (${e.message || 'error'}).`);
+        } else if (isVideo) {
+            try {
+                const buf = await file.arrayBuffer();
+                const scan = scanVideoMetadata(buf);
+                if (scan) {
+                    niLog(`Running ExifTool… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
+                    beforeMeta = scan.text;
+                } else {
+                    niLog(`Running ExifTool… no metadata or unsupported format.`);
+                }
+            } catch (e) {
+                niLog(`Running ExifTool… skipped (${e.message || 'error'}).`);
+            }
         }
 
         // Determine internal processing extension (always lowercase for FFmpeg)
@@ -170,22 +276,33 @@ startBtn.addEventListener('click', async () => {
         
         niLog(`Successfully cleaned: ${newName}`);
 
-        // ExifTool: scan cleaned output to confirm metadata removal
+        // Metadata scan on cleaned output: EXIF for images, container for video
         let afterMeta = '';
-        try {
-            const cleanedFile = { name: 'cleaned.' + targetExt, data: new Uint8Array(data.buffer) };
-            const afterResult = await parseMetadata(cleanedFile);
-            if (afterResult.success && typeof afterResult.data === 'string') {
-                const text = afterResult.data.trim();
-                const lines = text ? text.split(/\r?\n/).length : 0;
-                const kb = (afterResult.data.length / 1024).toFixed(2);
-                niLog(`Running scan… found ${kb} KB (${lines} lines) of metadata.`);
-                afterMeta = text;
-            } else {
+        if (isImage) {
+            try {
+                const buf = new Uint8Array(data.buffer);
+                const scan = await scanExif(buf);
+                if (scan) {
+                    niLog(`Running scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
+                    afterMeta = scan.text;
+                } else {
+                    niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
+                }
+            } catch (_) {
                 niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
             }
-        } catch (e) {
-            niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
+        } else if (isVideo) {
+            try {
+                const scan = scanVideoMetadata(data.buffer);
+                if (scan) {
+                    niLog(`Running scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
+                    afterMeta = scan.text;
+                } else {
+                    niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
+                }
+            } catch (_) {
+                niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
+            }
         }
 
         if (includeLogCheckbox.checked) {
@@ -200,7 +317,7 @@ startBtn.addEventListener('click', async () => {
     if (includeLogCheckbox.checked) {
         let logText = batchLogs.join('\n');
         if (batchMetadataLogs.length > 0) {
-            logText += '\n\n' + '='.repeat(60) + '\nFULL METADATA (ExifTool) BEFORE & AFTER\n' + '='.repeat(60);
+            logText += '\n\n' + '='.repeat(60) + '\nFULL METADATA (EXIF) BEFORE & AFTER\n' + '='.repeat(60);
             for (const entry of batchMetadataLogs) {
                 logText += `\n\n--- BEFORE: ${entry.fileName} ---\n${entry.beforeMeta || '(none or unavailable)'}`;
                 logText += `\n\n--- AFTER: ${entry.newName} ---\n${entry.afterMeta || '(none or unavailable)'}\n`;
