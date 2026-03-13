@@ -23,19 +23,24 @@ async function scanMetadata(input) {
         // Drop thumbnail to avoid bloating logs
         delete tags.Thumbnail;
 
-        // Flatten expanded groups (exif/xmp/iptc/...) into a single, consistently ordered list
+        // Flatten expanded groups (exif/xmp/iptc/...) into a single, consistently ordered, de-duplicated list
         const flat = [];
+        const byTagName = new Map(); // tagName -> { key, line }
         for (const groupName of Object.keys(tags)) {
             if (!tags[groupName] || typeof tags[groupName] !== 'object') continue;
             if (groupName === 'file') continue; // usually file system info, very noisy
             const group = tags[groupName];
             for (const tagName of Object.keys(group)) {
+                if (byTagName.has(tagName)) continue; // prefer first occurrence, avoid duplicates like repeated PNG chunks
                 const entry = group[tagName];
                 const desc = entry && 'description' in entry
                     ? String(entry.description)
                     : JSON.stringify(entry && entry.value);
                 // Use "Group.Tag" as the key so ordering is stable before/after
-                flat.push({ key: `${groupName}.${tagName}`, line: `${tagName}: ${desc}` });
+                const key = `${groupName}.${tagName}`;
+                const line = `${tagName}: ${desc}`;
+                byTagName.set(tagName, { key, line });
+                flat.push({ key, line });
             }
         }
 
@@ -73,6 +78,8 @@ const includeLogCheckbox = document.getElementById('includeLog');
 let batchLogs = [];     // what you see in the on-page log
 let exportLogs = [];    // what goes into the downloadable .txt (may include metadata details)
 let batchMetadataLogs = []; // per-file full metadata, used when building the export
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Helper to update the UI and internal log
 const niLog = (msg) => {
@@ -246,6 +253,8 @@ startBtn.addEventListener('click', async () => {
 
         if (includeLogCheckbox.checked) {
             batchMetadataLogs.push({ fileName: file.name, newName, beforeMeta, afterMeta });
+            // Small intentional delay so log + metadata blocks are flushed in order for troubleshooting
+            await sleep(150);
         }
 
         // Clean up virtual FS memory for next file
