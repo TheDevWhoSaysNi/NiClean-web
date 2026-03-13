@@ -310,7 +310,7 @@ startBtn.addEventListener('click', async () => {
                 logText += `\n\n--- AFTER: ${entry.newName} ---\n${entry.afterMeta || '(none or unavailable)'}\n`;
             }
         }
-        logText += '\n\nRecommendation: For extra verification, you can run the latest ExifTool CLI on your original and cleaned files (for example: exiftool -a -G -s filename.JPG) or use a trusted open-source viewer such as the advanced ExifReader demo to confirm that all metadata has been removed.';
+        logText += '\n\nRecommendation: ExifReader is a lightweight tool that can only scan so much at once, and lots of metadata can be embedded within other means. For extra verification, you can run the latest ExifTool CLI on your original and cleaned files (for example: exiftool -a -G -s filename.JPG) or use a trusted open-source viewer such as the advanced ExifReader demo to confirm that all metadata has been removed.';
         const logBlob = new Blob([logText], { type: 'text/plain' });
         const logUrl = URL.createObjectURL(logBlob);
         const logLink = document.createElement('a');
