@@ -7,49 +7,40 @@ import { getImageInfoFromBlob, getVideoInfoFromBlob } from './media-info.js';
 /** Unified metadata scan for images/videos using ExifReader; returns { text, lines, kb } or null */
 async function scanMetadata(input) {
     try {
-        let tags;
         const options = {
-            expanded: true,      // keep Exif / IPTC / XMP / etc. separate
-            includeUnknown: true // surface non-standard / JUMBF / C2PA-style blocks when possible
+            expanded: true,      // Keeps groups like XMP/IPTC organized
+            includeUnknown: true // Crucial for surfacing raw AI / JUMBF / C2PA-style blocks
         };
-        if (input instanceof ArrayBuffer || ArrayBuffer.isView(input)) {
-            // Synchronous API for ArrayBuffer/TypedArray
-            tags = ExifReader.load(input, options);
-        } else {
-            // Asynchronous API for File/Blob/URL
-            tags = await ExifReader.load(input, options);
-        }
+
+        const tags = (input instanceof ArrayBuffer || ArrayBuffer.isView(input))
+            ? ExifReader.load(input, options)
+            : await ExifReader.load(input, options);
+
         if (!tags || Object.keys(tags).length === 0) return null;
 
-        // Drop thumbnail to avoid bloating logs
-        delete tags.Thumbnail;
+        // Flatten groups into a single list while avoiding some noisy filesystem/thumbnail data
+        const flatLines = [];
+        for (const [groupName, groupTags] of Object.entries(tags)) {
+            if (!groupTags || typeof groupTags !== 'object') continue;
+            // Skip the noisiest groups to keep logs readable
+            if (['file', 'Thumbnail', 'MakerNotes'].includes(groupName)) continue;
 
-        // Flatten expanded groups (exif/xmp/iptc/...) into a single, consistently ordered list
-        const flat = [];
-        for (const groupName of Object.keys(tags)) {
-            if (!tags[groupName] || typeof tags[groupName] !== 'object') continue;
-            const group = tags[groupName];
-            for (const tagName of Object.keys(group)) {
-                const entry = group[tagName];
-                const desc = entry && 'description' in entry
-                    ? String(entry.description)
-                    : JSON.stringify(entry && entry.value);
-                // Use "Group.Tag" as the key so ordering is stable before/after and we preserve all groups
-                const key = `${groupName}.${tagName}`;
-                const line = `${key}: ${desc}`;
-                flat.push({ key, line });
+            for (const [tagName, tagData] of Object.entries(groupTags)) {
+                const value = tagData && 'description' in tagData
+                    ? String(tagData.description)
+                    : JSON.stringify(tagData && tagData.value);
+                flatLines.push(`${groupName}.${tagName}: ${value}`);
             }
         }
 
-        if (!flat.length) return null;
+        if (flatLines.length === 0) return null;
 
-        flat.sort((a, b) => a.key.localeCompare(b.key));
-        const linesArr = flat.map(x => x.line);
-        const text = linesArr.join('\n');
+        flatLines.sort((a, b) => a.localeCompare(b));
+        const text = flatLines.join('\n');
         const kb = (new TextEncoder().encode(text).length / 1024).toFixed(2);
-        return { text, lines: linesArr.length, kb };
+        return { text, lines: flatLines.length, kb };
     } catch (e) {
-        if (typeof console !== 'undefined' && console.error) console.error('scanMetadata:', e);
+        if (typeof console !== 'undefined') console.error('Ni Scan Error:', e);
         return null;
     }
 }
