@@ -75,24 +75,19 @@ const fileInput = document.getElementById('fileInput');
 const platformSelect = document.getElementById('platformSelect');
 const includeLogCheckbox = document.getElementById('includeLog');
 
-let exportLogs = [];    // single source of truth for downloadable .txt (includes metadata blocks)
+let batchLogs = [];        // chronological log for both UI and export
+let batchMetadataLogs = []; // per-file full metadata, appended after the main log in the export
 
-// Helper to update the UI and export log in one place
-// By default, standard log lines are timestamped and shown in the UI.
-// Metadata blocks can be passed with isMetadataBlock=true to avoid timestamps and stay out of the UI.
-const niLog = (msg, opts = {}) => {
-    const { isMetadataBlock = false, showInUi = !isMetadataBlock } = opts;
+// Helper to update the UI and internal log
+const niLog = (msg) => {
     const timestamp = new Date().toLocaleTimeString();
-    const entry = isMetadataBlock ? msg : `[${timestamp}] ${msg}`;
+    const entry = `[${timestamp}] ${msg}`;
+    batchLogs.push(entry);
 
-    exportLogs.push(entry);
-
-    if (showInUi) {
-        const div = document.createElement('div');
-        div.innerHTML = entry.replace(/\n/g, '<br>');
-        logEl.appendChild(div);
-        logEl.scrollTop = logEl.scrollHeight;
-    }
+    const div = document.createElement('div');
+    div.innerHTML = entry.replace(/\n/g, '<br>');
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
 };
 
 // Enable Start button when at least one file is selected
@@ -130,7 +125,8 @@ startBtn.addEventListener('click', async () => {
     }
 
     startBtn.disabled = true;
-    exportLogs = [];
+    batchLogs = [];
+    batchMetadataLogs = [];
 
     niLog(`Loading FFmpeg v${FFMPEG_VERSION} from CDN...`);
 
@@ -166,13 +162,6 @@ startBtn.addEventListener('click', async () => {
                 if (scan) {
                     niLog(`Running metadata scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
                     beforeMeta = scan.text;
-                    if (includeLogCheckbox.checked) {
-                        niLog(`--- METADATA BEFORE CLEANING: ${file.name} ---`, { isMetadataBlock: true, showInUi: false });
-                        if (beforeMeta) {
-                            niLog(beforeMeta, { isMetadataBlock: true, showInUi: false });
-                            niLog(`\nFound ${scan.kb} KB of data.`, { isMetadataBlock: true, showInUi: false });
-                        }
-                    }
                 } else {
                     niLog(`Running metadata scan… no metadata or unsupported format.`);
                 }
@@ -243,12 +232,6 @@ startBtn.addEventListener('click', async () => {
                 if (scan) {
                     niLog(`Running scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
                     afterMeta = scan.text;
-                    if (includeLogCheckbox.checked) {
-                        niLog(`--- METADATA AFTER CLEANING: ${newName} ---`, { isMetadataBlock: true, showInUi: false });
-                        if (afterMeta) {
-                            niLog(afterMeta, { isMetadataBlock: true, showInUi: false });
-                        }
-                    }
                 } else {
                     niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
                 }
@@ -257,13 +240,25 @@ startBtn.addEventListener('click', async () => {
             }
         }
 
+        if (includeLogCheckbox.checked) {
+            batchMetadataLogs.push({ fileName: file.name, newName, beforeMeta, afterMeta });
+        }
+
         // Clean up virtual FS memory for next file
         await ffmpeg.deleteFile('input');
     }
 
-    // Optional: Download log file (with full metadata before/after interleaved as processing happens)
+    // Optional: Download log file (main log first, then per-file full metadata before/after)
     if (includeLogCheckbox.checked) {
-        let logText = exportLogs.join('\n');
+        let logText = batchLogs.join('\n');
+        if (batchMetadataLogs.length > 0) {
+            logText += '\n\n' + '='.repeat(60) + '\nFULL METADATA BEFORE & AFTER (PER FILE)\n' + '='.repeat(60);
+            for (const entry of batchMetadataLogs) {
+                logText += `\n\n--- BEFORE: ${entry.fileName} ---\n${entry.beforeMeta || '(none or unavailable)'}`;
+                logText += `\n\n--- AFTER: ${entry.newName} ---\n${entry.afterMeta || '(none or unavailable)'}\n`;
+            }
+        }
+        logText += '\n\nRecommendation: For extra verification, you can run the latest ExifTool CLI on your original and cleaned files (for example: exiftool -a -G -s filename.JPG) or use a trusted open-source viewer such as the advanced ExifReader demo to confirm that all metadata has been removed.';
         const logBlob = new Blob([logText], { type: 'text/plain' });
         const logUrl = URL.createObjectURL(logBlob);
         const logLink = document.createElement('a');
