@@ -7,9 +7,13 @@ const FFmpegClass = (window.FFmpegWASM && window.FFmpegWASM.FFmpeg);
 if (!FFmpegClass) throw new Error('FFmpeg UMD not loaded. Ensure js/ffmpeg/ffmpeg.js runs before app.js.');
 const ffmpeg = new FFmpegClass();
 
-// Configuration: update versions later for easy upgrades
-const FFMPEG_VERSION = '0.12.2';
-const CDN_BASE = `https://unpkg.com/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd`;
+// Core JS is same-origin so worker's importScripts() works; WASM stays on CDN (large)
+const FFMPEG_VERSION = '0.12.1';
+const CORE_JS_SAME_ORIGIN = (() => {
+    const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
+    return base + 'js/ffmpeg/ffmpeg-core.js';
+})();
+const WASM_CDN_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd/ffmpeg-core.wasm`;
 const logEl = document.getElementById('log');
 const startBtn = document.getElementById('startBtn');
 const fileInput = document.getElementById('fileInput');
@@ -70,10 +74,9 @@ startBtn.addEventListener('click', async () => {
     niLog(`Loading FFmpeg v${FFMPEG_VERSION} from CDN...`);
 
     try {
-        // Use direct CDN URLs so the worker fetches them; blob URLs can trigger atob() in the worker and fail
         await ffmpeg.load({
-            coreURL: `${CDN_BASE}/ffmpeg-core.js`,
-            wasmURL: `${CDN_BASE}/ffmpeg-core.wasm`
+            coreURL: CORE_JS_SAME_ORIGIN,
+            wasmURL: WASM_CDN_URL
         });
         niLog(`Engine loaded. Starting batch...`);
     } catch (err) {

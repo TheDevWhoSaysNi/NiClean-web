@@ -17,7 +17,7 @@ The site is hosted on **GitHub** and deployed via **Cloudflare Pages**. It uses 
 If you want to run your own version of NiClean:
 
 1.  **Fork the repo** to your own GitHub account.
-2.  **FFmpeg.wasm:** The `js/ffmpeg/` folder contains the UMD build (ffmpeg.js + 814.ffmpeg.js worker) so the worker runs same-origin and avoids cross-origin errors. The core (WASM) is loaded from unpkg; `@ffmpeg/util` is loaded from esm.sh. All at v0.12.2.
+2.  **FFmpeg.wasm:** The `js/ffmpeg/` folder contains the UMD build (ffmpeg.js, 814.ffmpeg.js worker, ffmpeg-core.js) so the worker and core load same-origin and avoid cross-origin/atob errors. The WASM binary is loaded from jsDelivr CDN. `@ffmpeg/util` from esm.sh. Core v0.12.1.
 3.  **Setup Cloudflare Pages:**
     * Connect your fork to Cloudflare Pages.
     * Set the **Build Command** and **Output Directory** to be empty.
