@@ -2,6 +2,7 @@
 // FFmpeg comes from UMD script (js/ffmpeg/ffmpeg.js) so the worker is same-origin
 import { fetchFile } from '@ffmpeg/util';
 import ExifReader from 'exifreader';
+import { getImageInfoFromBlob, getVideoInfoFromBlob } from './media-info.js';
 
 /** Unified metadata scan for images/videos using ExifReader; returns { text, lines, kb } or null */
 async function scanMetadata(input) {
@@ -23,23 +24,19 @@ async function scanMetadata(input) {
         // Drop thumbnail to avoid bloating logs
         delete tags.Thumbnail;
 
-        // Flatten expanded groups (exif/xmp/iptc/...) into a single, consistently ordered, de-duplicated list
+        // Flatten expanded groups (exif/xmp/iptc/...) into a single, consistently ordered list
         const flat = [];
-        const byTagName = new Map(); // tagName -> { key, line }
         for (const groupName of Object.keys(tags)) {
             if (!tags[groupName] || typeof tags[groupName] !== 'object') continue;
-            if (groupName === 'file') continue; // usually file system info, very noisy
             const group = tags[groupName];
             for (const tagName of Object.keys(group)) {
-                if (byTagName.has(tagName)) continue; // prefer first occurrence, avoid duplicates like repeated PNG chunks
                 const entry = group[tagName];
                 const desc = entry && 'description' in entry
                     ? String(entry.description)
                     : JSON.stringify(entry && entry.value);
-                // Use "Group.Tag" as the key so ordering is stable before/after
+                // Use "Group.Tag" as the key so ordering is stable before/after and we preserve all groups
                 const key = `${groupName}.${tagName}`;
-                const line = `${tagName}: ${desc}`;
-                byTagName.set(tagName, { key, line });
+                const line = `${key}: ${desc}`;
                 flat.push({ key, line });
             }
         }
@@ -158,12 +155,44 @@ startBtn.addEventListener('click', async () => {
         let beforeMeta = '';
         if (isImage || isVideo) {
             try {
+                const infoLines = [];
+                if (isImage) {
+                    const info = await getImageInfoFromBlob(file);
+                    if (info && info.width && info.height) {
+                        infoLines.push(`Dimensions: ${info.width}x${info.height} px`);
+                    }
+                    if (info && info.sizeKB) {
+                        infoLines.push(`Approx size: ${info.sizeKB} KB`);
+                    }
+                } else if (isVideo) {
+                    const info = await getVideoInfoFromBlob(file);
+                    if (info && info.width && info.height) {
+                        infoLines.push(`Dimensions: ${info.width}x${info.height} px`);
+                    }
+                    if (info && typeof info.duration === 'number' && info.duration > 0) {
+                        infoLines.push(`Duration: ${info.duration.toFixed(2)} s`);
+                    }
+                    if (info && info.bitrateKbps) {
+                        infoLines.push(`Approx bitrate: ${info.bitrateKbps} kbps`);
+                    }
+                    if (info && info.sizeKB) {
+                        infoLines.push(`Approx size: ${info.sizeKB} KB`);
+                    }
+                }
+
                 const scan = await scanMetadata(file);
                 if (scan) {
                     niLog(`Running metadata scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
-                    beforeMeta = scan.text;
+                    if (infoLines.length) {
+                        beforeMeta = infoLines.join('\n') + '\n\n' + scan.text;
+                    } else {
+                        beforeMeta = scan.text;
+                    }
                 } else {
                     niLog(`Running metadata scan… no metadata or unsupported format.`);
+                    if (infoLines.length) {
+                        beforeMeta = infoLines.join('\n');
+                    }
                 }
             } catch (e) {
                 niLog(`Running metadata scan… skipped (${e.message || 'error'}).`);
@@ -227,13 +256,45 @@ startBtn.addEventListener('click', async () => {
         let afterMeta = '';
         if (isImage || isVideo) {
             try {
+                const infoLines = [];
+                if (isImage) {
+                    const info = await getImageInfoFromBlob(outBlob);
+                    if (info && info.width && info.height) {
+                        infoLines.push(`Dimensions: ${info.width}x${info.height} px`);
+                    }
+                    if (info && info.sizeKB) {
+                        infoLines.push(`Approx size: ${info.sizeKB} KB`);
+                    }
+                } else if (isVideo) {
+                    const info = await getVideoInfoFromBlob(outBlob);
+                    if (info && info.width && info.height) {
+                        infoLines.push(`Dimensions: ${info.width}x${info.height} px`);
+                    }
+                    if (info && typeof info.duration === 'number' && info.duration > 0) {
+                        infoLines.push(`Duration: ${info.duration.toFixed(2)} s`);
+                    }
+                    if (info && info.bitrateKbps) {
+                        infoLines.push(`Approx bitrate: ${info.bitrateKbps} kbps`);
+                    }
+                    if (info && info.sizeKB) {
+                        infoLines.push(`Approx size: ${info.sizeKB} KB`);
+                    }
+                }
+
                 const buf = await outBlob.arrayBuffer();
                 const scan = await scanMetadata(buf);
                 if (scan) {
                     niLog(`Running scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
-                    afterMeta = scan.text;
+                    if (infoLines.length) {
+                        afterMeta = infoLines.join('\n') + '\n\n' + scan.text;
+                    } else {
+                        afterMeta = scan.text;
+                    }
                 } else {
                     niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
+                    if (infoLines.length) {
+                        afterMeta = infoLines.join('\n');
+                    }
                 }
             } catch (e) {
                 niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
