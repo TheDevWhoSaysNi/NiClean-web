@@ -9,17 +9,19 @@ async function scanMetadata(input) {
         let tags;
         if (input instanceof ArrayBuffer || ArrayBuffer.isView(input)) {
             // Synchronous API for ArrayBuffer/TypedArray
-            tags = ExifReader.load(input);
+            tags = ExifReader.load(input, { expanded: true });
         } else {
             // Asynchronous API for File/Blob/URL
-            tags = await ExifReader.load(input);
+            tags = await ExifReader.load(input, { expanded: true });
         }
         if (!tags || Object.keys(tags).length === 0) return null;
 
         // Drop thumbnail to avoid bloating logs
         delete tags.Thumbnail;
 
-        const linesArr = Object.entries(tags).map(([name, tag]) => {
+        const keys = Object.keys(tags).sort((a, b) => a.localeCompare(b));
+        const linesArr = keys.map((name) => {
+            const tag = tags[name];
             const desc = tag && 'description' in tag ? String(tag.description) : JSON.stringify(tag && tag.value);
             return `${name}: ${desc}`;
         });
@@ -50,15 +52,16 @@ const fileInput = document.getElementById('fileInput');
 const platformSelect = document.getElementById('platformSelect');
 const includeLogCheckbox = document.getElementById('includeLog');
 
-let batchLogs = [];
-/** When "Include processing log" is checked, per-file ExifTool before/after for the download log */
-let batchMetadataLogs = [];
+let batchLogs = [];     // what you see in the on-page log
+let exportLogs = [];    // what goes into the downloadable .txt (may include metadata details)
+let batchMetadataLogs = []; // per-file full metadata, used when building the export
 
 // Helper to update the UI and internal log
 const niLog = (msg) => {
     const timestamp = new Date().toLocaleTimeString();
     const entry = `[${timestamp}] ${msg}`;
     batchLogs.push(entry);
+    exportLogs.push(entry);
     
     const div = document.createElement('div');
     div.innerHTML = entry;
@@ -102,6 +105,7 @@ startBtn.addEventListener('click', async () => {
 
     startBtn.disabled = true;
     batchLogs = [];
+    exportLogs = [];
     batchMetadataLogs = [];
 
     niLog(`Loading FFmpeg v${FFMPEG_VERSION} from CDN...`);
@@ -138,6 +142,9 @@ startBtn.addEventListener('click', async () => {
                 if (scan) {
                     niLog(`Running metadata scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
                     beforeMeta = scan.text;
+                    if (includeLogCheckbox.checked) {
+                        exportLogs.push(`\n--- METADATA BEFORE CLEANING: ${file.name} ---\n${beforeMeta || '(none or unavailable)'}`);
+                    }
                 } else {
                     niLog(`Running metadata scan… no metadata or unsupported format.`);
                 }
@@ -208,6 +215,9 @@ startBtn.addEventListener('click', async () => {
                 if (scan) {
                     niLog(`Running scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
                     afterMeta = scan.text;
+                    if (includeLogCheckbox.checked) {
+                        exportLogs.push(`\n--- METADATA AFTER CLEANING: ${newName} ---\n${afterMeta || '(none or unavailable)'}`);
+                    }
                 } else {
                     niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
                 }
@@ -224,16 +234,9 @@ startBtn.addEventListener('click', async () => {
         await ffmpeg.deleteFile('input');
     }
 
-    // Optional: Download log file (with full metadata before/after if checkbox was checked)
+    // Optional: Download log file (with full metadata before/after interleaved as processing happens)
     if (includeLogCheckbox.checked) {
-        let logText = batchLogs.join('\n');
-        if (batchMetadataLogs.length > 0) {
-            logText += '\n\n' + '='.repeat(60) + '\nFULL METADATA BEFORE & AFTER\n' + '='.repeat(60);
-            for (const entry of batchMetadataLogs) {
-                logText += `\n\n--- BEFORE: ${entry.fileName} ---\n${entry.beforeMeta || '(none or unavailable)'}`;
-                logText += `\n\n--- AFTER: ${entry.newName} ---\n${entry.afterMeta || '(none or unavailable)'}\n`;
-            }
-        }
+        let logText = exportLogs.join('\n');
         const logBlob = new Blob([logText], { type: 'text/plain' });
         const logUrl = URL.createObjectURL(logBlob);
         const logLink = document.createElement('a');

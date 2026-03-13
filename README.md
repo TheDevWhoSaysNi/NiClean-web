@@ -1,6 +1,6 @@
 # NiClean Web
 
-A privacy-first, client-side metadata cleaner for photos and videos. This tool is built by **TheDevWhoSaysNi** to ensure that sensitive information (like GPS coordinates and camera serials) is stripped from your media before you share it.
+A privacy-first, client-side metadata cleaner for photos and videos. This tool is built by **TheDevWhoSaysNi** to ensure that sensitive information (like GPS coordinates and camera serials) is stripped from your media before you share it. This tool is provided "as is" under the Apache 2.0 License. It is designed to empower users to protect their own privacy. The creator (TheDevWhoSaysNi) does not condone the use of this tool for copyright infringement, content plagiarism, or any attempt to "scrub" provenance data to misrepresent the origin of media. Use it for good.
 
 **Live Site:** [niclean.suncoastservers.com](https://niclean.suncoastservers.com)
 
