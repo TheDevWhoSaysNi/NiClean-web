@@ -8,11 +8,12 @@
     <script type="importmap">
     {
       "imports": {
-        "@ffmpeg/ffmpeg": "https://esm.sh/@ffmpeg/ffmpeg@0.12.2",
         "@ffmpeg/util": "https://esm.sh/@ffmpeg/util@0.12.2"
       }
     }
     </script>
+    <!-- UMD build served from same origin so the Worker (814.ffmpeg.js) is same-origin -->
+    <script src="js/ffmpeg/ffmpeg.js"></script>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>

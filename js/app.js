@@ -1,12 +1,15 @@
 // NiClean Web Logic
-import { FFmpeg } from '@ffmpeg/ffmpeg';
+// FFmpeg comes from UMD script (js/ffmpeg/ffmpeg.js) so the worker is same-origin
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+
+// FFmpeg from UMD (js/ffmpeg/ffmpeg.js) so worker 814.ffmpeg.js is same-origin
+const FFmpegClass = (window.FFmpegWASM && window.FFmpegWASM.FFmpeg);
+if (!FFmpegClass) throw new Error('FFmpeg UMD not loaded. Ensure js/ffmpeg/ffmpeg.js runs before app.js.');
+const ffmpeg = new FFmpegClass();
 
 // Configuration: update versions later for easy upgrades
 const FFMPEG_VERSION = '0.12.2';
 const CDN_BASE = `https://unpkg.com/@ffmpeg/core@${FFMPEG_VERSION}/dist/umd`;
-
-const ffmpeg = new FFmpeg();
 const logEl = document.getElementById('log');
 const startBtn = document.getElementById('startBtn');
 const fileInput = document.getElementById('fileInput');

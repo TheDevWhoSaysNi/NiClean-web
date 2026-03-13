@@ -11,13 +11,13 @@ A privacy-first, client-side metadata cleaner for photos and videos. This tool i
 * **Open Source:** Built using `FFmpeg.wasm`.
 
 ## How it Works
-The site is hosted on **GitHub** and deployed via **Cloudflare Pages**. It uses a custom `_headers` file to enable the security headers (`COOP/COEP`) required for multi-threaded FFmpeg processing in the browser.
+The site is hosted on **GitHub** and deployed via **Cloudflare Pages**. It uses a custom `_headers` file (COOP/COEP are optional and currently commented out so the CDN worker can load).
 
 ## Instructions for Forking
 If you want to run your own version of NiClean:
 
 1.  **Fork the repo** to your own GitHub account.
-2.  **FFmpeg.wasm** is loaded from CDN (esm.sh + unpkg); no local binaries needed. The app uses `@ffmpeg/ffmpeg` and `@ffmpeg/util` v0.12.2.
+2.  **FFmpeg.wasm:** The `js/ffmpeg/` folder contains the UMD build (ffmpeg.js + 814.ffmpeg.js worker) so the worker runs same-origin and avoids cross-origin errors. The core (WASM) is loaded from unpkg; `@ffmpeg/util` is loaded from esm.sh. All at v0.12.2.
 3.  **Setup Cloudflare Pages:**
     * Connect your fork to Cloudflare Pages.
     * Set the **Build Command** and **Output Directory** to be empty.
