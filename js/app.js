@@ -26,29 +26,58 @@ const VIDEO_META_TAG_NAMES = {
     '----': 'Custom'
 };
 
+/** Find first child box with given type (walk .boxes; fetch may not support all types e.g. ilst) */
+function findBox(container, type) {
+    if (!container || !container.boxes) return null;
+    const t = String(type);
+    for (const b of container.boxes) {
+        if ((b.type || '').trim() === t) return b;
+    }
+    return null;
+}
+
 /** Extract container metadata from MP4/MOV buffer (moov/udta/meta/ilst); returns { text, lines, kb } or null */
 function scanVideoMetadata(buffer) {
     if (!buffer || !(buffer.byteLength || buffer.length)) return null;
     try {
         const ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
         const root = ISOBoxer.parseBuffer(ab);
-        const moov = root && root.fetch && root.fetch('moov');
-        const udta = moov && moov.fetch && moov.fetch('udta');
-        const meta = udta && udta.fetch && udta.fetch('meta');
-        const ilst = meta && meta.fetch && meta.fetch('ilst');
+        if (!root) return null;
+        const moov = (root.boxes && findBox(root, 'moov')) || (root.fetch && root.fetch('moov'));
+        if (!moov) return null;
         const lines = [];
-        if (moov && moov.fetch('mvhd')) {
-            const mvhd = moov.fetch('mvhd');
-            if (mvhd.timescale && mvhd.duration) {
-                const sec = (mvhd.duration / mvhd.timescale).toFixed(2);
-                lines.push(`Duration: ${sec} s (timescale ${mvhd.timescale})`);
+        const mvhd = findBox(moov, 'mvhd') || (moov.fetch && moov.fetch('mvhd'));
+        if (mvhd) {
+            let timescale = mvhd.timescale;
+            let duration = mvhd.duration;
+            if ((timescale == null || duration == null) && (mvhd._raw || mvhd.data)) {
+                const raw = mvhd._raw || mvhd.data;
+                const view = raw instanceof DataView ? raw : new DataView(raw.buffer, raw.byteOffset || 0, raw.byteLength || raw.length);
+                if (view.byteLength >= 12) {
+                    const ver = view.getUint32(0, false);
+                    if (ver === 0) {
+                        timescale = timescale ?? view.getUint32(4, false);
+                        duration = duration ?? view.getUint32(8, false);
+                    } else if (view.byteLength >= 20) {
+                        timescale = timescale ?? view.getUint32(4, false);
+                        duration = duration ?? Number(view.getBigUint64(8, false));
+                    }
+                }
+            }
+            if (timescale && duration) {
+                const sec = (Number(duration) / timescale).toFixed(2);
+                lines.push(`Duration: ${sec} s (timescale ${timescale})`);
             }
         }
+        const udta = findBox(moov, 'udta') || (moov.fetch && moov.fetch('udta'));
+        const meta = udta ? (findBox(udta, 'meta') || (udta.fetch && udta.fetch('meta'))) : null;
+        const ilst = meta ? (findBox(meta, 'ilst') || (meta.fetch && meta.fetch('ilst'))) : null;
         if (ilst && ilst.boxes && ilst.boxes.length) {
             for (const tagBox of ilst.boxes) {
                 const tagType = (tagBox.type || '').trim();
+                if (!tagType) continue;
                 const name = VIDEO_META_TAG_NAMES[tagType] || `Tag ${JSON.stringify(tagType)}`;
-                const dataBox = tagBox.fetch && tagBox.fetch('data');
+                const dataBox = findBox(tagBox, 'data') || (tagBox.fetch && tagBox.fetch('data'));
                 let value = '(no data)';
                 if (dataBox) {
                     const raw = dataBox._raw || dataBox.data;
@@ -74,7 +103,8 @@ function scanVideoMetadata(buffer) {
         const text = lines.join('\n');
         const kb = (text.length / 1024).toFixed(2);
         return { text, lines: lines.length, kb };
-    } catch (_) {
+    } catch (e) {
+        if (typeof console !== 'undefined' && console.error) console.error('scanVideoMetadata:', e);
         return null;
     }
 }
@@ -91,7 +121,8 @@ async function scanExif(buffer) {
         const lines = text.split(/\n/).length;
         const kb = (text.length / 1024).toFixed(2);
         return { text, lines, kb };
-    } catch (_) {
+    } catch (e) {
+        if (typeof console !== 'undefined' && console.error) console.error('scanExif:', e);
         return null;
     }
 }
