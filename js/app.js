@@ -1,6 +1,6 @@
 // NiClean Web Logic
 // FFmpeg comes from UMD script (js/ffmpeg/ffmpeg.js) so the worker is same-origin
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { fetchFile } from '@ffmpeg/util';
 
 // FFmpeg from UMD (js/ffmpeg/ffmpeg.js) so worker 814.ffmpeg.js is same-origin
 const FFmpegClass = (window.FFmpegWASM && window.FFmpegWASM.FFmpeg);
@@ -70,9 +70,10 @@ startBtn.addEventListener('click', async () => {
     niLog(`Loading FFmpeg v${FFMPEG_VERSION} from CDN...`);
 
     try {
+        // Use direct CDN URLs so the worker fetches them; blob URLs can trigger atob() in the worker and fail
         await ffmpeg.load({
-            coreURL: await toBlobURL(`${CDN_BASE}/ffmpeg-core.js`, 'text/javascript'),
-            wasmURL: await toBlobURL(`${CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm')
+            coreURL: `${CDN_BASE}/ffmpeg-core.js`,
+            wasmURL: `${CDN_BASE}/ffmpeg-core.wasm`
         });
         niLog(`Engine loaded. Starting batch...`);
     } catch (err) {
