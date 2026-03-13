@@ -75,23 +75,24 @@ const fileInput = document.getElementById('fileInput');
 const platformSelect = document.getElementById('platformSelect');
 const includeLogCheckbox = document.getElementById('includeLog');
 
-let batchLogs = [];     // what you see in the on-page log
-let exportLogs = [];    // what goes into the downloadable .txt (may include metadata details)
-let batchMetadataLogs = []; // per-file full metadata, used when building the export
+let exportLogs = [];    // single source of truth for downloadable .txt (includes metadata blocks)
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Helper to update the UI and internal log
-const niLog = (msg) => {
+// Helper to update the UI and export log in one place
+// By default, standard log lines are timestamped and shown in the UI.
+// Metadata blocks can be passed with isMetadataBlock=true to avoid timestamps and stay out of the UI.
+const niLog = (msg, opts = {}) => {
+    const { isMetadataBlock = false, showInUi = !isMetadataBlock } = opts;
     const timestamp = new Date().toLocaleTimeString();
-    const entry = `[${timestamp}] ${msg}`;
-    batchLogs.push(entry);
+    const entry = isMetadataBlock ? msg : `[${timestamp}] ${msg}`;
+
     exportLogs.push(entry);
-    
-    const div = document.createElement('div');
-    div.innerHTML = entry;
-    logEl.appendChild(div);
-    logEl.scrollTop = logEl.scrollHeight;
+
+    if (showInUi) {
+        const div = document.createElement('div');
+        div.innerHTML = entry.replace(/\n/g, '<br>');
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
 };
 
 // Enable Start button when at least one file is selected
@@ -129,9 +130,7 @@ startBtn.addEventListener('click', async () => {
     }
 
     startBtn.disabled = true;
-    batchLogs = [];
     exportLogs = [];
-    batchMetadataLogs = [];
 
     niLog(`Loading FFmpeg v${FFMPEG_VERSION} from CDN...`);
 
@@ -168,7 +167,11 @@ startBtn.addEventListener('click', async () => {
                     niLog(`Running metadata scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
                     beforeMeta = scan.text;
                     if (includeLogCheckbox.checked) {
-                        exportLogs.push(`\n--- METADATA BEFORE CLEANING: ${file.name} ---\n${beforeMeta || '(none or unavailable)'}`);
+                        niLog(`--- METADATA BEFORE CLEANING: ${file.name} ---`, { isMetadataBlock: true, showInUi: false });
+                        if (beforeMeta) {
+                            niLog(beforeMeta, { isMetadataBlock: true, showInUi: false });
+                            niLog(`\nFound ${scan.kb} KB of data.`, { isMetadataBlock: true, showInUi: false });
+                        }
                     }
                 } else {
                     niLog(`Running metadata scan… no metadata or unsupported format.`);
@@ -241,7 +244,10 @@ startBtn.addEventListener('click', async () => {
                     niLog(`Running scan… found ${scan.kb} KB (${scan.lines} lines) of metadata.`);
                     afterMeta = scan.text;
                     if (includeLogCheckbox.checked) {
-                        exportLogs.push(`\n--- METADATA AFTER CLEANING: ${newName} ---\n${afterMeta || '(none or unavailable)'}`);
+                        niLog(`--- METADATA AFTER CLEANING: ${newName} ---`, { isMetadataBlock: true, showInUi: false });
+                        if (afterMeta) {
+                            niLog(afterMeta, { isMetadataBlock: true, showInUi: false });
+                        }
                     }
                 } else {
                     niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
@@ -249,12 +255,6 @@ startBtn.addEventListener('click', async () => {
             } catch (e) {
                 niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
             }
-        }
-
-        if (includeLogCheckbox.checked) {
-            batchMetadataLogs.push({ fileName: file.name, newName, beforeMeta, afterMeta });
-            // Small intentional delay so log + metadata blocks are flushed in order for troubleshooting
-            await sleep(150);
         }
 
         // Clean up virtual FS memory for next file
