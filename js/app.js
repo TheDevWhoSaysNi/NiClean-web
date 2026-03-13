@@ -1,6 +1,7 @@
 // NiClean Web Logic
 // FFmpeg comes from UMD script (js/ffmpeg/ffmpeg.js) so the worker is same-origin
 import { fetchFile } from '@ffmpeg/util';
+import { parseMetadata } from '@uswriting/exiftool';
 
 // FFmpeg from UMD (js/ffmpeg/ffmpeg.js) so worker 814.ffmpeg.js is same-origin
 const FFmpegClass = (window.FFmpegWASM && window.FFmpegWASM.FFmpeg);
@@ -21,6 +22,8 @@ const platformSelect = document.getElementById('platformSelect');
 const includeLogCheckbox = document.getElementById('includeLog');
 
 let batchLogs = [];
+/** When "Include processing log" is checked, per-file ExifTool before/after for the download log */
+let batchMetadataLogs = [];
 
 // Helper to update the UI and internal log
 const niLog = (msg) => {
@@ -69,8 +72,9 @@ startBtn.addEventListener('click', async () => {
     }
 
     startBtn.disabled = true;
-    batchLogs = []; // Reset logs for new batch
-    
+    batchLogs = [];
+    batchMetadataLogs = [];
+
     niLog(`Loading FFmpeg v${FFMPEG_VERSION} from CDN...`);
 
     try {
@@ -97,6 +101,23 @@ startBtn.addEventListener('click', async () => {
 
         niLog(`Processing (${ni + 1}/${files.length}): ${file.name}`);
 
+        // ExifTool: scan original file for metadata (before cleaning)
+        let beforeMeta = '';
+        try {
+            const beforeResult = await parseMetadata(file);
+            if (beforeResult.success && typeof beforeResult.data === 'string') {
+                const text = beforeResult.data.trim();
+                const lines = text ? text.split(/\r?\n/).length : 0;
+                const kb = (beforeResult.data.length / 1024).toFixed(2);
+                niLog(`Running ExifTool… found ${kb} KB (${lines} lines) of metadata.`);
+                beforeMeta = text;
+            } else {
+                niLog(`Running ExifTool… no metadata or unsupported format.`);
+            }
+        } catch (e) {
+            niLog(`Running ExifTool… skipped (${e.message || 'error'}).`);
+        }
+
         // Determine internal processing extension (always lowercase for FFmpeg)
         let targetExt = isVideo ? (platform === 'ios' ? 'mov' : 'mp4') : 'jpg';
         let newName = file.name;
@@ -115,15 +136,24 @@ startBtn.addEventListener('click', async () => {
         // Load file into virtual FS
         await ffmpeg.writeFile('input', await fetchFile(file));
 
-        // CLEAN & CONVERT
-        // -map_metadata -1 removes all metadata
+        // CLEAN & CONVERT: -map_metadata -1 strips metadata; -fflags/-flags +bitexact avoids Lavc/Lavf encoder tags
         if (isVideo) {
             niLog("Cleaning video metadata...");
-            // -c copy is used to ensure zero quality loss and maximum speed
-            await ffmpeg.exec(['-i', 'input', '-map_metadata', '-1', '-c:v', 'copy', '-c:a', 'copy', 'output.' + targetExt]);
+            await ffmpeg.exec([
+                '-i', 'input',
+                '-map_metadata', '-1',
+                '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
+                '-c:v', 'copy', '-c:a', 'copy',
+                'output.' + targetExt
+            ]);
         } else if (isImage) {
             niLog("Converting/Cleaning image...");
-            await ffmpeg.exec(['-i', 'input', '-map_metadata', '-1', 'output.' + targetExt]);
+            await ffmpeg.exec([
+                '-i', 'input',
+                '-map_metadata', '-1',
+                '-fflags', '+bitexact', '-flags:v', '+bitexact',
+                'output.' + targetExt
+            ]);
         }
 
         // Export result to user
@@ -139,14 +169,44 @@ startBtn.addEventListener('click', async () => {
         a.click();
         
         niLog(`Successfully cleaned: ${newName}`);
-        
+
+        // ExifTool: scan cleaned output to confirm metadata removal
+        let afterMeta = '';
+        try {
+            const cleanedFile = { name: 'cleaned.' + targetExt, data: new Uint8Array(data.buffer) };
+            const afterResult = await parseMetadata(cleanedFile);
+            if (afterResult.success && typeof afterResult.data === 'string') {
+                const text = afterResult.data.trim();
+                const lines = text ? text.split(/\r?\n/).length : 0;
+                const kb = (afterResult.data.length / 1024).toFixed(2);
+                niLog(`Running scan… found ${kb} KB (${lines} lines) of metadata.`);
+                afterMeta = text;
+            } else {
+                niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
+            }
+        } catch (e) {
+            niLog(`Running scan… found 0 KB (0 lines) of metadata.`);
+        }
+
+        if (includeLogCheckbox.checked) {
+            batchMetadataLogs.push({ fileName: file.name, newName, beforeMeta, afterMeta });
+        }
+
         // Clean up virtual FS memory for next file
         await ffmpeg.deleteFile('input');
     }
 
-    // Optional: Download log file
+    // Optional: Download log file (with full ExifTool before/after if checkbox was checked)
     if (includeLogCheckbox.checked) {
-        const logBlob = new Blob([batchLogs.join('\n')], { type: 'text/plain' });
+        let logText = batchLogs.join('\n');
+        if (batchMetadataLogs.length > 0) {
+            logText += '\n\n' + '='.repeat(60) + '\nFULL METADATA (ExifTool) BEFORE & AFTER\n' + '='.repeat(60);
+            for (const entry of batchMetadataLogs) {
+                logText += `\n\n--- BEFORE: ${entry.fileName} ---\n${entry.beforeMeta || '(none or unavailable)'}`;
+                logText += `\n\n--- AFTER: ${entry.newName} ---\n${entry.afterMeta || '(none or unavailable)'}\n`;
+            }
+        }
+        const logBlob = new Blob([logText], { type: 'text/plain' });
         const logUrl = URL.createObjectURL(logBlob);
         const logLink = document.createElement('a');
         logLink.href = logUrl;
@@ -155,5 +215,6 @@ startBtn.addEventListener('click', async () => {
     }
 
     niLog("All files processed. Done!");
+    fileInput.value = '';
     updateStartButtonState();
 });
