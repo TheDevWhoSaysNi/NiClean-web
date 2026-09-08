@@ -51,8 +51,10 @@ if (!FFmpegClass) throw new Error('FFmpeg UMD not loaded. Ensure js/ffmpeg/ffmpe
 const ffmpeg = new FFmpegClass();
 
 // Core JS is same-origin so worker's importScripts() works; WASM stays on CDN (large)
-// @ffmpeg/core 0.12.10 (JS + WASM). Local UMD wrapper is @ffmpeg/ffmpeg@0.12.15.
+// Keep these in sync with js/ffmpeg/ UMD files and the importmap in index.html.
 const FFMPEG_VERSION = '0.12.10';
+const FFMPEG_WRAPPER_VERSION = '0.12.15';
+const EXIFREADER_VERSION = '4.44.1';
 const CORE_JS_SAME_ORIGIN = (() => {
     const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
     return base + 'js/ffmpeg/ffmpeg-core.js';
@@ -63,6 +65,11 @@ const startBtn = document.getElementById('startBtn');
 const fileInput = document.getElementById('fileInput');
 const platformSelect = document.getElementById('platformSelect');
 const includeLogCheckbox = document.getElementById('includeLog');
+const currentVersionsList = document.getElementById('currentVersionsList');
+if (currentVersionsList) {
+    currentVersionsList.textContent =
+        `FFmpeg.wasm ${FFMPEG_VERSION} (@ffmpeg/ffmpeg ${FFMPEG_WRAPPER_VERSION}), ExifReader ${EXIFREADER_VERSION}`;
+}
 
 let batchLogs = [];        // chronological log for both UI and export
 let batchMetadataLogs = []; // per-file full metadata, appended after the main log in the export
