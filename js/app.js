@@ -51,7 +51,8 @@ if (!FFmpegClass) throw new Error('FFmpeg UMD not loaded. Ensure js/ffmpeg/ffmpe
 const ffmpeg = new FFmpegClass();
 
 // Core JS is same-origin so worker's importScripts() works; WASM stays on CDN (large)
-const FFMPEG_VERSION = '0.12.1';
+// @ffmpeg/core 0.12.10 (JS + WASM). Local UMD wrapper is @ffmpeg/ffmpeg@0.12.15.
+const FFMPEG_VERSION = '0.12.10';
 const CORE_JS_SAME_ORIGIN = (() => {
     const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
     return base + 'js/ffmpeg/ffmpeg-core.js';
