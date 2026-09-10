@@ -1,0 +1,23 @@
+---
+description: Use ni instead of i as the for-loop index
+globs: js/**/*.js
+alwaysApply: false
+---
+
+# For-loop index name
+
+In first-party JavaScript (not vendor files under `js/ffmpeg/`), use `ni` instead of `i` as the index in C-style `for` loops.
+
+```javascript
+// ❌ BAD
+for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+}
+
+// ✅ GOOD
+for (let ni = 0; ni < files.length; ni++) {
+    const file = files[ni];
+}
+```
+
+`for...of` / `for...in` loops may keep descriptive iterator names (`entry`, `tagName`, etc.). Do not rename those to `ni`.
